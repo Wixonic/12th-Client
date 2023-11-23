@@ -1,0 +1,16 @@
+.plastic/
+.vscode/
+
+Library/
+Logs/
+obj/
+Packages/
+ProjectSettings/
+UserSettings/
+
+.DS_Store
+
+*.conf
+*.csproj
+*.meta
+*.sln
