@@ -24,7 +24,7 @@ namespace API {
 
 			packet.position--;
 
-			Debug.Log("Not compound");
+			Debug.Log("Compound");
 		}
 
 		public void WriteTo(ServerPacket packet) {
