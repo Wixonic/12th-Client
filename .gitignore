@@ -10,6 +10,7 @@ Temp/
 UserSettings/
 
 .DS_Store
+.fake
 
 *.conf
 *.csproj
