@@ -1,7 +1,6 @@
 using SmartNbt.Tags;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using UnityEngine;
 
 namespace API {
@@ -152,13 +151,14 @@ namespace API {
 	}
 
 	public class ClientChunkDataPacket : ClientPacket {
+		public static int sectionCount = 24;
+
 		public readonly static int ID = 0x24;
 		public readonly static State STATE = State.Play;
 
 		public readonly int chunkX;
 		public readonly int chunkZ;
 		public readonly NbtCompound heightmaps;
-		public readonly List<ChunkSection> chunkSections = new();
 		public readonly List<Tuple<Vector3, int, NbtCompound>> blockEntities = new();
 
 		public ClientChunkDataPacket(byte[] buffer) : base(buffer, ID, STATE) {
@@ -166,8 +166,21 @@ namespace API {
 			this.chunkZ = this.ReadInt();
 			this.heightmaps = this.ReadNBT();
 
-			MemoryStream data = new(this.ReadBytes(this.ReadVarInt()));
-			for (int i = 0; i < ChunkSection.AmountInChunk; ++i) this.chunkSections.Add(new(data));
+			int dataLength = this.ReadVarInt();
+			long start = this.buffer.Position;
+
+			for (int i = 0; i < 1/* ClientChunkDataPacket.sectionCount */; ++i) {
+				short blockCount = this.ReadShort();
+				Debug.Log($"Block count: {blockCount}");
+
+				// Block states
+				byte bitsPerEntry = this.ReadByte();
+				Debug.Log($"Bits per entry: {bitsPerEntry}");
+
+				// Biomes
+			}
+
+			this.buffer.Position = start + dataLength;
 
 			for (int i = 0; i < this.ReadVarInt(); ++i) {
 				byte packedXZ = this.ReadByte();

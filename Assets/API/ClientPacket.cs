@@ -28,7 +28,7 @@ namespace API {
 		internal MemoryStream buffer;
 
 		public static ClientPacket Parse(byte[] buffer, State state) {
-			//try {
+			// try {
 			int id = ReadVarInt(buffer);
 
 			string[] ignored = { "Play:0x6B" };
@@ -47,7 +47,7 @@ namespace API {
 				if (tuple != null) return tuple.Item3(buffer);
 			}
 			/* } catch (Exception e) {
-				throw new Exception($"Unvalid packet: {e.Message}");
+				Debug.LogError($"Unvalid packet: {e.Message}");
 			} */
 
 			return null;
@@ -217,10 +217,18 @@ namespace API {
 		}
 
 		public NbtCompound ReadNBT() {
+			if (this.ReadByte() != 0x0a) return new NbtCompound("Empty or Broken");
+			else this.buffer.Position--;
+
 			NbtFile file = new();
+
+			// try {
 			file.LoadFromStream(this.buffer, NbtCompression.None);
-			Debug.Log(file.ToString());
 			return file.RootTag;
+			/* } catch (Exception e) {
+				Debug.LogError($"Failed to parse NBT in packet {this.state}:0x{this.id:x2}: {e.Message}");
+				return new();
+			} */
 		}
 	}
 }
