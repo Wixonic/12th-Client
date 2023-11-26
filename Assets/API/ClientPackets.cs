@@ -1,3 +1,4 @@
+using SmartNbt.Tags;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -86,7 +87,7 @@ namespace API {
 		public ClientLoginPluginRequestPacket(byte[] buffer) : base(buffer, ID, STATE) {
 			this.messageId = this.ReadVarInt();
 			this.channel = this.ReadIdentifier();
-			this.data = this.ReadBytes(this.buffer.Length - this.position);
+			this.data = this.ReadBytes((int)(this.buffer.Length - this.buffer.Position));
 		}
 	}
 
@@ -100,7 +101,7 @@ namespace API {
 		public readonly byte gamemode;
 		public readonly byte previousGamemode;
 		public readonly List<string> dimensions = new();
-		public readonly NBT registeryCodec;
+		public readonly NbtCompound registeryCodec;
 		public readonly string dimensionType;
 		public readonly string dimensionName;
 		public readonly long hashedSeed;
@@ -156,9 +157,9 @@ namespace API {
 
 		public readonly int chunkX;
 		public readonly int chunkZ;
-		public readonly NBT heightmaps;
+		public readonly NbtCompound heightmaps;
 		public readonly List<ChunkSection> chunkSections = new();
-		public readonly List<Tuple<Vector3, int, NBT>> blockEntities = new();
+		public readonly List<Tuple<Vector3, int, NbtCompound>> blockEntities = new();
 
 		public ClientChunkDataPacket(byte[] buffer) : base(buffer, ID, STATE) {
 			this.chunkX = this.ReadInt();
@@ -172,7 +173,7 @@ namespace API {
 				byte packedXZ = this.ReadByte();
 				short y = this.ReadShort();
 				int type = this.ReadVarInt();
-				NBT blockEntityData = this.ReadNBT();
+				NbtCompound blockEntityData = this.ReadNBT();
 
 				this.blockEntities.Add(new(new(packedXZ >> 4, y, packedXZ & 15), type, blockEntityData));
 			}

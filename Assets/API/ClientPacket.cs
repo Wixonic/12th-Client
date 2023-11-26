@@ -1,3 +1,5 @@
+using SmartNbt;
+using SmartNbt.Tags;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -23,8 +25,7 @@ namespace API {
 			new(ClientUpdateTimePacket.ID, ClientUpdateTimePacket.STATE, (byte[] buffer) => new ClientUpdateTimePacket(buffer))
 		};
 
-		internal byte[] buffer;
-		internal int position = 0;
+		internal MemoryStream buffer;
 
 		public static ClientPacket Parse(byte[] buffer, State state) {
 			//try {
@@ -77,21 +78,15 @@ namespace API {
 		public readonly static Side SIDE = Side.Client;
 
 		public ClientPacket(byte[] buffer, int id, State state) : base(id, state, SIDE) {
-			this.buffer = buffer;
+			this.buffer = new(buffer);
 			this.ReadVarInt(); // Remove the Packet ID
 		}
 
-		public byte ReadByte() {
-			if (this.buffer.Length > this.position) {
-				byte b = this.buffer[this.position];
-				this.position++;
-				return b;
-			} else return 0;
-		}
+		public byte ReadByte() => (byte)this.buffer.ReadByte();
 
 		public byte[] ReadBytes(int count) {
 			MemoryStream bytes = new();
-			for (int x = 0; x < count && this.buffer.Length > this.position; ++x) bytes.WriteByte(this.ReadByte());
+			for (int x = 0; x < count; ++x) bytes.WriteByte(this.ReadByte());
 			return bytes.ToArray();
 		}
 
@@ -99,29 +94,29 @@ namespace API {
 
 		public bool ReadBoolean() => this.ReadByte() == 1;
 
-		public ushort ReadUShort() {
+		public ushort ReadUShort(bool isBigEndian = false) {
 			int b0 = this.ReadByte();
 			int b1 = this.ReadByte();
 
-			if (BitConverter.IsLittleEndian) return (ushort)(b0 << 8 | b1);
+			if (BitConverter.IsLittleEndian && !isBigEndian) return (ushort)(b0 << 8 | b1);
 			return (ushort)(b0 | b1 << 8);
 		}
 
-		public short ReadShort() => (short)this.ReadUShort();
+		public short ReadShort(bool isBigEndian = false) => (short)this.ReadUShort(isBigEndian);
 
-		public uint ReadUInt() {
+		public uint ReadUInt(bool isBigEndian = false) {
 			int b0 = this.ReadByte();
 			int b1 = this.ReadByte();
 			int b2 = this.ReadByte();
 			int b3 = this.ReadByte();
 
-			if (BitConverter.IsLittleEndian) return (uint)(b0 << 24 | b1 << 16 | b2 << 8 | b3);
+			if (BitConverter.IsLittleEndian && !isBigEndian) return (uint)(b0 << 24 | b1 << 16 | b2 << 8 | b3);
 			return (uint)(b0 | b1 << 8 | b2 << 16 | b3 << 24);
 		}
 
-		public int ReadInt() => (int)this.ReadUInt();
+		public int ReadInt(bool isBigEndian = false) => (int)this.ReadUInt(isBigEndian);
 
-		public ulong ReadULong() {
+		public ulong ReadULong(bool isBigEndian = false) {
 			long b0 = this.ReadByte();
 			long b1 = this.ReadByte();
 			long b2 = this.ReadByte();
@@ -131,23 +126,23 @@ namespace API {
 			long b6 = this.ReadByte();
 			long b7 = this.ReadByte();
 
-			if (BitConverter.IsLittleEndian) return (ulong)(b0 << 56 | b1 << 48 | b2 << 40 | b3 << 32 | b4 << 24 | b5 << 16 | b6 << 8 | b7);
+			if (BitConverter.IsLittleEndian && !isBigEndian) return (ulong)(b0 << 56 | b1 << 48 | b2 << 40 | b3 << 32 | b4 << 24 | b5 << 16 | b6 << 8 | b7);
 			return (ulong)(b0 | b1 << 8 | b2 << 16 | b3 << 24 | b4 << 32 | b5 << 40 | b6 << 48 | b7 << 56);
 		}
 
-		public long ReadLong() => (long)this.ReadULong();
+		public long ReadLong(bool isBigEndian = false) => (long)this.ReadULong(isBigEndian);
 
-		public float ReadFloat() {
+		public float ReadFloat(bool isBigEndian = false) {
 			byte[] bytes = this.ReadBytes(sizeof(float));
 
-			if (BitConverter.IsLittleEndian) bytes.Reverse();
+			if (BitConverter.IsLittleEndian && !isBigEndian) bytes.Reverse();
 			return BitConverter.ToSingle(bytes);
 		}
 
-		public double ReadDouble() {
+		public double ReadDouble(bool isBigEndian = false) {
 			byte[] bytes = this.ReadBytes(sizeof(double));
 
-			if (BitConverter.IsLittleEndian) bytes.Reverse();
+			if (BitConverter.IsLittleEndian && !isBigEndian) bytes.Reverse();
 			return BitConverter.ToDouble(bytes);
 		}
 
@@ -221,6 +216,11 @@ namespace API {
 			return vector;
 		}
 
-		public NBT ReadNBT() => new(this);
+		public NbtCompound ReadNBT() {
+			NbtFile file = new();
+			file.LoadFromStream(this.buffer, NbtCompression.None);
+			Debug.Log(file.ToString());
+			return file.RootTag;
+		}
 	}
 }

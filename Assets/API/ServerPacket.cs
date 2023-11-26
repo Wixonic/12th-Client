@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Text;
+using SmartNbt;
+using SmartNbt.Tags;
 using UnityEngine;
 
 namespace API {
@@ -123,6 +125,8 @@ namespace API {
 
 		public void WritePosition(Vector3Int vector) => this.WriteULong(((ulong)vector.x & 0x3FFFFFF) << 38 | ((ulong)vector.z & 0x3FFFFFF) << 12 | (ulong)vector.y & 0xFFF);
 
-		public void WriteNBT(NBT nbt) => nbt.WriteTo(this);
+		public void WriteNBT(NbtCompound tag) {
+			this.WriteBytes(tag.ByteArrayValue);
+		}
 	}
 }
