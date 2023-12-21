@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq.Expressions;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,6 +34,7 @@ namespace API {
 		private void Listen() {
 			new Thread(() => {
 				while (this.tcp.Connected && this.stream.CanRead) {
+					// try {
 					int length = this.ReadVarInt();
 					int alreadyRead = 0;
 
@@ -59,6 +61,9 @@ namespace API {
 					}
 					/* } catch (Exception e) {
 						Debug.LogError($"Failed to parse client-packet: {e.Message}");
+					} */
+					/* } catch (Exception e) {
+						Debug.LogError($"Failed to read network stream: {e.Message}");
 					} */
 				}
 			}).Start();

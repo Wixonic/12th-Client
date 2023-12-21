@@ -1,3 +1,4 @@
+using System;
 using API;
 using UnityEngine;
 
@@ -12,7 +13,7 @@ public class World : MonoBehaviour {
 
 	public async void Start() {
 		client = new();
-		await client.Connect(null, null, null, null);
+		await client.Connect("server.wixonic.fr", null, "Wixi", Guid.Parse("52e485b75156498e8341dd44f4a38908"));
 
 		Light light = this.sunlight.GetComponent<Light>();
 		light.type = LightType.Directional;

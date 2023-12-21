@@ -1,6 +1,7 @@
 using SmartNbt.Tags;
 using System;
 using System.Collections.Generic;
+using Unity.VisualScripting;
 using UnityEngine;
 
 namespace API {
@@ -151,7 +152,9 @@ namespace API {
 	}
 
 	public class ClientChunkDataPacket : ClientPacket {
-		public static int sectionCount = 24;
+		public static int SECTION_COUNT = 24;
+		public static int SECTION_WIDTH = 16;
+		public static int SECTION_HEIGHT = 16;
 
 		public readonly static int ID = 0x24;
 		public readonly static State STATE = State.Play;
@@ -159,7 +162,8 @@ namespace API {
 		public readonly int chunkX;
 		public readonly int chunkZ;
 		public readonly NbtCompound heightmaps;
-		public readonly List<Tuple<Vector3, int, NbtCompound>> blockEntities = new();
+		public readonly List<uint> blocks = new();
+		public readonly List<Tuple<Vector3, int, NbtCompound>> entities = new();
 
 		public ClientChunkDataPacket(byte[] buffer) : base(buffer, ID, STATE) {
 			this.chunkX = this.ReadInt();
@@ -169,15 +173,78 @@ namespace API {
 			int dataLength = this.ReadVarInt();
 			long start = this.buffer.Position;
 
-			for (int i = 0; i < 1/* ClientChunkDataPacket.sectionCount */; ++i) {
+			for (int i = 0; i < ClientChunkDataPacket.SECTION_COUNT; ++i) {
 				short blockCount = this.ReadShort();
-				Debug.Log($"Block count: {blockCount}");
 
-				// Block states
-				byte bitsPerEntry = this.ReadByte();
-				Debug.Log($"Bits per entry: {bitsPerEntry}");
+				// Blocks
+				byte blocksBitsPerEntry = this.ReadByte();
+
+				if (blocksBitsPerEntry == 0) {
+					Debug.LogError("Blocks palette format: Single valued");
+				} else if (blocksBitsPerEntry <= 8) {
+					Debug.Log("Blocks palette format: Indirect");
+					int length = this.ReadVarInt();
+
+					Debug.Log($"Length: {length}");
+
+					for (int x = 0; x < length; ++x) {
+						int state = this.ReadVarInt();
+					}
+				} else if (blocksBitsPerEntry > 8) {
+					Debug.LogError("Blocks palette format: Direct");
+				} else {
+					Debug.LogError($"Invalid blocks bits per entry: {blocksBitsPerEntry}");
+				}
+
+				uint individualValueMask = (uint)((1 << blocksBitsPerEntry) - 1);
+				int dataArrayLength = this.ReadVarInt();
+
+				List<ulong> dataArray = new(dataArrayLength);
+				for (int j = 0; j < dataArrayLength; ++j) dataArray.Add(this.ReadULong());
+
+				for (int y = 0; y < ClientChunkDataPacket.SECTION_HEIGHT; y++) {
+					for (int z = 0; z < ClientChunkDataPacket.SECTION_WIDTH; z++) {
+						for (int x = 0; x < ClientChunkDataPacket.SECTION_WIDTH; x++) {
+							int blockNumber = (((y * ClientChunkDataPacket.SECTION_HEIGHT) + z) * ClientChunkDataPacket.SECTION_WIDTH) + x;
+							int startLong = blockNumber * blocksBitsPerEntry / 64;
+							int startOffset = blockNumber * blocksBitsPerEntry % 64;
+							int endLong = ((blockNumber + 1) * blocksBitsPerEntry - 1) / 64;
+
+							uint data;
+							if (startLong == endLong) {
+								data = (uint)(dataArray[startLong] >> startOffset);
+							} else {
+								int endOffset = 64 - startOffset;
+								data = (uint)(dataArray[startLong] >> startOffset | dataArray[endLong] << endOffset);
+							}
+							data &= individualValueMask;
+
+							this.blocks.Add(data);
+						}
+					}
+				}
+
+				Debug.Log(this.blocks);
 
 				// Biomes
+				byte biomesBitsPerEntry = this.ReadByte();
+
+				if (biomesBitsPerEntry == 0) {
+					Debug.LogError("Biomes palette format: Single valued");
+				} else if (biomesBitsPerEntry <= 3) {
+					Debug.Log("Biomes palette format: Indirect");
+					int length = this.ReadVarInt();
+
+					Debug.Log($"Length: {length}");
+
+					for (int x = 0; x < length; ++x) {
+						int state = this.ReadVarInt();
+					}
+				} else if (biomesBitsPerEntry > 3) {
+					Debug.LogError("Biomes palette format: Direct");
+				} else {
+					Debug.LogError($"Invalid biomes bits per entry: {biomesBitsPerEntry}");
+				}
 			}
 
 			this.buffer.Position = start + dataLength;
@@ -186,9 +253,9 @@ namespace API {
 				byte packedXZ = this.ReadByte();
 				short y = this.ReadShort();
 				int type = this.ReadVarInt();
-				NbtCompound blockEntityData = this.ReadNBT();
+				NbtCompound entityData = this.ReadNBT();
 
-				this.blockEntities.Add(new(new(packedXZ >> 4, y, packedXZ & 15), type, blockEntityData));
+				this.entities.Add(new(new(packedXZ >> 4, y, packedXZ & 15), type, entityData));
 			}
 		}
 	}
