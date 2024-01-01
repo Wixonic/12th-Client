@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq.Expressions;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,6 +15,8 @@ namespace API {
 		private NetworkStream stream;
 		public State state;
 		private readonly object bufferLock = new();
+
+		public int compression = -1;
 
 		public async Task Connect(string ip, ushort port) {
 			await this.tcp.ConnectAsync(ip ?? "90.91.236.96", port);

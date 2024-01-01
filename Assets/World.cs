@@ -1,19 +1,28 @@
 using System;
 using API;
+using SmartNbt.Tags;
 using UnityEngine;
 
 public class World : MonoBehaviour {
+	public static World current;
+
 	public new Camera camera;
 	public GameObject sunlight;
 
-	Client client;
-	float time;
-	Vector3 position = new(0, 0, 0);
-	Quaternion rotation = new(0, 0, 0, 0);
+	public Client client;
+	public float time;
+	public Vector3 position = new(0, 0, 0);
+	public Quaternion rotation = new(0, 0, 0, 0);
+
+	public NbtCompound registeryCodec;
+	public string dimensionType;
+	public string dimensionName;
 
 	public async void Start() {
+		World.current = this;
+
 		client = new();
-		await client.Connect("server.wixonic.fr", null, "Wixi", Guid.Parse("52e485b75156498e8341dd44f4a38908"));
+		await client.Connect("localhost", 25565, "Wixi", Guid.Parse("52e485b75156498e8341dd44f4a38908"));
 
 		Light light = this.sunlight.GetComponent<Light>();
 		light.type = LightType.Directional;

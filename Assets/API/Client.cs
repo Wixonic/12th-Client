@@ -26,7 +26,11 @@ namespace API {
 			}, true);
 
 			// Set Compression
-			this.manager.AddListener(ClientSetCompressionPacket.ID, ClientSetCompressionPacket.STATE, (ClientPacket p) => Debug.LogError("The server asks for compression"), true);
+			this.manager.AddListener(ClientSetCompressionPacket.ID, ClientSetCompressionPacket.STATE, (ClientPacket p) => {
+				ClientSetCompressionPacket packet = (ClientSetCompressionPacket)p;
+				this.manager.compression = packet.threshold;
+				Debug.LogWarning($"The server asks for compression: {packet.threshold}");
+			}, true);
 
 			// Login Plugin Request
 			this.manager.AddListener(ClientLoginPluginRequestPacket.ID, ClientLoginPluginRequestPacket.STATE, (ClientPacket p) => {

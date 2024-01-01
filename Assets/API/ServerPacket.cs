@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Text;
-using SmartNbt;
 using SmartNbt.Tags;
 using UnityEngine;
 
