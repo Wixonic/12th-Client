@@ -173,10 +173,9 @@ namespace API {
 			int dataLength = this.ReadVarInt();
 			long start = this.buffer.Position;
 
-			World.current.World.current.dimensionType;
 			int blockCount = this.ReadShort();
-			Palette blocksStates = new(this);
-			Palette biomes = new(this);
+			PaletteContainer blocksStates = new(this);
+			PaletteContainer biomes = new(this, true);
 
 			this.buffer.Position = start + dataLength;
 
