@@ -1,12 +1,10 @@
 using SmartNbt.Tags;
 using System;
 using System.Collections.Generic;
-using Unity.VisualScripting;
 using UnityEngine;
 
 namespace API {
 	// Disconnected
-
 	public class ClientDisconnectPacket : ClientPacket {
 		public readonly string reason;
 
@@ -30,7 +28,6 @@ namespace API {
 	}
 
 	// Login packets
-
 	public class ClientEncryptionRequestPacket : ClientPacket {
 		public readonly static int ID = 0x01;
 		public readonly static State STATE = State.Login;
@@ -99,7 +96,8 @@ namespace API {
 		public readonly int entityId;
 		public readonly bool isHardcore;
 		public readonly byte gamemode;
-		public readonly byte previousGamemode;
+		public readonly sbyte previousGamemode;
+		public readonly int dimensionCount;
 		public readonly List<string> dimensions = new();
 		public readonly NbtCompound registeryCodec;
 		public readonly string dimensionType;
@@ -119,8 +117,9 @@ namespace API {
 			this.entityId = this.ReadInt();
 			this.isHardcore = this.ReadBoolean();
 			this.gamemode = this.ReadByte();
-			this.previousGamemode = this.ReadByte();
-			for (int i = 0; i < this.ReadVarInt(); ++i) this.dimensions.Add(this.ReadIdentifier());
+			this.previousGamemode = this.ReadSByte();
+			this.dimensionCount = this.ReadVarInt();
+			for (int i = 0; i < this.dimensionCount; ++i) this.dimensions.Add(this.ReadIdentifier());
 			this.registeryCodec = this.ReadNBT();
 			this.dimensionType = this.ReadIdentifier();
 			this.dimensionName = this.ReadIdentifier();
@@ -132,13 +131,19 @@ namespace API {
 			this.enableRespawnScreen = this.ReadBoolean();
 			this.isDebug = this.ReadBoolean();
 			this.isFlat = this.ReadBoolean();
-			if (this.ReadBoolean()) this.death = new(this.ReadString(), this.ReadPosition());
+			if (this.ReadBoolean()) this.death = new(this.ReadIdentifier(), this.ReadPosition());
 			else this.death = null;
 			this.portalCooldown = this.ReadVarInt();
 		}
 	}
 
 	// Play packets
+	public class ClientBundleDelimiterPacket : ClientPacket {
+		public readonly static int ID = 0x00;
+		public readonly static State STATE = State.Play;
+
+		public ClientBundleDelimiterPacket(byte[] buffer) : base(buffer, ID, STATE) { }
+	}
 
 	public class ClientKeepAlivePacket : ClientPacket {
 		public readonly static int ID = 0x23;
@@ -162,7 +167,7 @@ namespace API {
 		public readonly int chunkX;
 		public readonly int chunkZ;
 		public readonly NbtCompound heightmaps;
-		public readonly List<uint> blocks = new();
+		public readonly List<List<List<List<int>>>> column = new();
 		public readonly List<Tuple<Vector3, int, NbtCompound>> entities = new();
 
 		public ClientChunkDataPacket(byte[] buffer) : base(buffer, ID, STATE) {
@@ -173,19 +178,26 @@ namespace API {
 			int dataLength = this.ReadVarInt();
 			long start = this.buffer.Position;
 
-			int blockCount = this.ReadShort();
-			PaletteContainer blocksStates = new(this);
-			PaletteContainer biomes = new(this, true);
+			for (int x = 0; x < World.current.registeryCodec["minecraft:dimension_type"]["value"][World.current.dimensionId]["element"]["height"].IntValue / 16; x++) {
+				int blockCount = this.ReadShort();
 
-			this.buffer.Position = start + dataLength;
+				PaletteContainer blockStates = new(this);
+				this.column.Add(blockStates.dataArray);
 
-			for (int i = 0; i < this.ReadVarInt(); ++i) {
-				byte packedXZ = this.ReadByte();
-				short y = this.ReadShort();
-				int type = this.ReadVarInt();
-				NbtCompound entityData = this.ReadNBT();
+				PaletteContainer biomes = new(this, true);
 
-				this.entities.Add(new(new(packedXZ >> 4, y, packedXZ & 15), type, entityData));
+				this.buffer.Position = start + dataLength;
+
+				int numberOfBlockEntities = this.ReadVarInt();
+
+				for (int i = 0; i < numberOfBlockEntities; ++i) {
+					byte packedXZ = this.ReadByte();
+					short y = this.ReadShort();
+					int type = this.ReadVarInt();
+					NbtCompound entityData = this.ReadNBT();
+
+					this.entities.Add(new(new(packedXZ >> 4, y, packedXZ & 15), type, entityData));
+				}
 			}
 		}
 	}
@@ -225,6 +237,36 @@ namespace API {
 
 			if ((flag & 0x10) == 1) this.playerRotation = Quaternion.Euler(this.playerRotation.eulerAngles.x + rx, this.playerRotation.eulerAngles.y, this.playerRotation.eulerAngles.z);
 			else this.playerRotation = Quaternion.Euler(rx, this.playerRotation.eulerAngles.y, this.playerRotation.eulerAngles.z);
+		}
+	}
+
+	public class ClientRespawnPacket : ClientPacket {
+		public readonly static int ID = 0x41;
+		public readonly static State STATE = State.Play;
+
+		public readonly string dimensionType;
+		public readonly string dimensionName;
+		public readonly long hashedSeed;
+		public readonly byte gamemode;
+		public readonly byte previousGamemode;
+		public readonly bool isDebug;
+		public readonly bool isFlat;
+		public readonly byte dataKept;
+		public readonly Tuple<string, Vector3Int> death;
+		public readonly int portalCooldown;
+
+		public ClientRespawnPacket(byte[] buffer) : base(buffer, ID, STATE) {
+			this.dimensionType = this.ReadIdentifier();
+			this.dimensionName = this.ReadIdentifier();
+			this.hashedSeed = this.ReadLong();
+			this.gamemode = this.ReadByte();
+			this.previousGamemode = this.ReadByte();
+			this.isDebug = this.ReadBoolean();
+			this.isFlat = this.ReadBoolean();
+			this.dataKept = this.ReadByte();
+			if (this.ReadBoolean()) this.death = new(this.ReadIdentifier(), this.ReadPosition());
+			else this.death = null;
+			this.portalCooldown = this.ReadVarInt();
 		}
 	}
 

@@ -13,15 +13,18 @@ namespace API {
 			new(ClientDisconnectLoginPacket.ID, ClientDisconnectLoginPacket.STATE, (byte[] buffer) => new ClientDisconnectLoginPacket(buffer)),
 			new(ClientDisconnectPlayPacket.ID, ClientDisconnectPlayPacket.STATE, (byte[] buffer) => new ClientDisconnectPlayPacket(buffer)),
 
+			new(ClientEncryptionRequestPacket.ID, ClientEncryptionRequestPacket.STATE, (byte[] buffer) => new ClientEncryptionRequestPacket(buffer)),
 			new(ClientLoginSuccessPacket.ID, ClientLoginSuccessPacket.STATE, (byte[] buffer) => new ClientLoginSuccessPacket(buffer)),
 			new(ClientSetCompressionPacket.ID, ClientSetCompressionPacket.STATE, (byte[] buffer) => new ClientSetCompressionPacket(buffer)),
 			new(ClientLoginPluginRequestPacket.ID, ClientLoginPluginRequestPacket.STATE, (byte[] buffer) => new ClientLoginPluginRequestPacket(buffer)),
 
 			new(ClientLoginPlayPacket.ID, ClientLoginPlayPacket.STATE, (byte[] buffer) => new ClientLoginPlayPacket(buffer)),
 
+			new(ClientBundleDelimiterPacket.ID, ClientBundleDelimiterPacket.STATE, (byte[] buffer) => new ClientBundleDelimiterPacket(buffer)),
 			new(ClientKeepAlivePacket.ID, ClientKeepAlivePacket.STATE, (byte[] buffer) => new ClientKeepAlivePacket(buffer)),
 			new(ClientChunkDataPacket.ID, ClientChunkDataPacket.STATE, (byte[] buffer) => new ClientChunkDataPacket(buffer)),
 			new(ClientSynchronizePositionPacket.ID, ClientSynchronizePositionPacket.STATE, (byte[] buffer) => new ClientSynchronizePositionPacket(buffer)),
+			new(ClientRespawnPacket.ID, ClientRespawnPacket.STATE, (byte[] buffer) => new ClientRespawnPacket(buffer)),
 			new(ClientUpdateTimePacket.ID, ClientUpdateTimePacket.STATE, (byte[] buffer) => new ClientUpdateTimePacket(buffer))
 		};
 
@@ -31,7 +34,7 @@ namespace API {
 			// try {
 			int id = ReadVarInt(buffer);
 
-			string[] ignored = { "Play:0x6B" };
+			string[] ignored = { };
 
 			if (!ignored.Contains($"{state}:0x{id.ToString("x2").ToUpper()}")) {
 				Tuple<int, State, Func<byte[], ClientPacket>> tuple;
@@ -41,7 +44,7 @@ namespace API {
 					// Debug.Log($"Recieved packed {state}:0x{id:x2}");
 				} catch {
 					tuple = null;
-					Debug.Log($"Recieved packed {state}:0x{id:x2}");
+					// Debug.Log($"Recieved packed {state}:0x{id:x2}");
 				}
 
 				if (tuple != null) return tuple.Item3(buffer);
