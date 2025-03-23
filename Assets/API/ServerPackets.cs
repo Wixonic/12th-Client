@@ -23,10 +23,7 @@ namespace API {
 
 		public ServerLoginStartPacket(string username, Guid? uuid = null) : base(ID, STATE) {
 			this.WriteString(username ?? "Test", 16);
-			if (uuid != null) {
-				this.WriteBool(true);
-				this.WriteUUID(uuid ?? Guid.NewGuid());
-			} else this.WriteBool(false);
+			this.WriteUUID(uuid ?? Guid.NewGuid());
 		}
 	}
 
@@ -51,6 +48,13 @@ namespace API {
 			this.WriteBool(successful);
 			if (successful && data != null) this.WriteBytes(data);
 		}
+	}
+
+	public class ServerLoginAcknowledgedPacket : ServerPacket {
+		public readonly static int ID = 0x03;
+		public readonly static State STATE = State.Login;
+
+		public ServerLoginAcknowledgedPacket() : base(ID, STATE) { }
 	}
 
 	// Play packets

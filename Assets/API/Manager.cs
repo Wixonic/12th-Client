@@ -35,37 +35,37 @@ namespace API {
 		private void Listen() {
 			new Thread(() => {
 				while (this.tcp.Connected && this.stream.CanRead) {
-					// try {
-					int length = this.ReadVarInt();
-					int alreadyRead = 0;
+					try {
+						int length = this.ReadVarInt();
+						int alreadyRead = 0;
 
-					byte[] data = new byte[length];
+						byte[] data = new byte[length];
 
-					while (alreadyRead < length) {
-						alreadyRead += this.stream.Read(data, alreadyRead, length - alreadyRead);
-					}
-
-					// try {
-					ClientPacket packet = ClientPacket.Parse(data, this.state);
-
-					if (packet != null) {
-						List<Tuple<int, State, Action<ClientPacket>, bool>> listenersToRemove = new();
-
-						foreach (Tuple<int, State, Action<ClientPacket>, bool> listener in this.listeners) {
-							if (packet.id == listener.Item1 && packet.state == listener.Item2) {
-								listener.Item3(packet);
-								if (listener.Item4) listenersToRemove.Add(listener);
-							}
+						while (alreadyRead < length) {
+							alreadyRead += this.stream.Read(data, alreadyRead, length - alreadyRead);
 						}
 
-						foreach (Tuple<int, State, Action<ClientPacket>, bool> listener in listenersToRemove) this.listeners.Remove(listener);
-					}
-					/* } catch (Exception e) {
-						Debug.LogError($"Failed to parse client-packet: {e.Message}");
-					} */
-					/* } catch (Exception e) {
+						try {
+							ClientPacket packet = ClientPacket.Parse(data, this.state);
+
+							if (packet != null) {
+								List<Tuple<int, State, Action<ClientPacket>, bool>> listenersToRemove = new();
+
+								foreach (Tuple<int, State, Action<ClientPacket>, bool> listener in this.listeners) {
+									if (packet.id == listener.Item1 && packet.state == listener.Item2) {
+										listener.Item3(packet);
+										if (listener.Item4) listenersToRemove.Add(listener);
+									}
+								}
+
+								foreach (Tuple<int, State, Action<ClientPacket>, bool> listener in listenersToRemove) this.listeners.Remove(listener);
+							}
+						} catch (Exception e) {
+							Debug.LogError($"Failed to parse client-packet: {e.Message}");
+						}
+					} catch (Exception e) {
 						Debug.LogError($"Failed to read network stream: {e.Message}");
-					} */
+					}
 				}
 			}).Start();
 		}

@@ -5,26 +5,37 @@ using UnityEngine;
 
 namespace API {
 	// Disconnected
-	public class ClientDisconnectPacket : ClientPacket {
+	public class ClientDisconnectLoginPacket : ClientPacket {
+		public readonly static int ID = 0x00;
+		public readonly static State STATE = State.Login;
+
 		public readonly string reason;
 
-		public ClientDisconnectPacket(byte[] buffer, int id, State state) : base(buffer, id, state) {
+		public ClientDisconnectLoginPacket(byte[] buffer) : base(buffer, ID, STATE) {
 			this.reason = this.ReadChat();
 		}
 	}
 
-	public class ClientDisconnectLoginPacket : ClientDisconnectPacket {
-		public readonly static int ID = 0x00;
-		public readonly static State STATE = State.Login;
+	public class ClientDisconnectConfigurationPacket : ClientPacket {
+		public readonly static int ID = 0x02;
+		public readonly static State STATE = State.Configuration;
 
-		public ClientDisconnectLoginPacket(byte[] buffer) : base(buffer, ID, STATE) { }
+		public readonly NbtCompound reason;
+
+		public ClientDisconnectConfigurationPacket(byte[] buffer) : base(buffer, ID, STATE) {
+			this.reason = this.ReadNBT();
+		}
 	}
 
-	public class ClientDisconnectPlayPacket : ClientDisconnectPacket {
-		public readonly static int ID = 0x1A;
+	public class ClientDisconnectPlayPacket : ClientPacket {
+		public readonly static int ID = 0x1D;
 		public readonly static State STATE = State.Play;
 
-		public ClientDisconnectPlayPacket(byte[] buffer) : base(buffer, ID, STATE) { }
+		public readonly string reason;
+
+		public ClientDisconnectPlayPacket(byte[] buffer) : base(buffer, ID, STATE) {
+			this.reason = this.ReadChat();
+		}
 	}
 
 	// Login packets
@@ -40,6 +51,7 @@ namespace API {
 			this.serverId = this.ReadString(20);
 			this.key = this.ReadBytes(this.ReadVarInt());
 			this.token = this.ReadBytes(this.ReadVarInt());
+			bool shouldAuthenticate = this.ReadBoolean();
 		}
 	}
 
@@ -55,10 +67,14 @@ namespace API {
 			this.username = this.ReadString(16);
 
 			for (int i = 0; i < this.ReadVarInt(); ++i) {
+				string name = this.ReadString(32767);
+				string value = this.ReadString(32767);
 				bool signed = this.ReadBoolean();
-				Debug.Log($"Property n°{i + 1}: Name {this.ReadString(32767)} - Value {this.ReadString(32767)} - {(signed ? "Signed" : "Unsigned")}");
+				Debug.Log($"Property n°{i + 1}: Name {name} - Value {value} - {(signed ? "Signed" : "Unsigned")}");
 				if (signed) this.ReadString(32767);
 			}
+
+			bool strictErrorHandling = this.ReadBoolean();
 		}
 	}
 
@@ -90,7 +106,7 @@ namespace API {
 
 	// Between Login and Play
 	public class ClientLoginPlayPacket : ClientPacket {
-		public readonly static int ID = 0x28;
+		public readonly static int ID = 0x2B;
 		public readonly static State STATE = State.Login;
 
 		public readonly int entityId;
@@ -161,7 +177,7 @@ namespace API {
 		public static int SECTION_WIDTH = 16;
 		public static int SECTION_HEIGHT = 16;
 
-		public readonly static int ID = 0x24;
+		public readonly static int ID = 0x27;
 		public readonly static State STATE = State.Play;
 
 		public readonly int chunkX;
@@ -203,7 +219,7 @@ namespace API {
 	}
 
 	public class ClientSynchronizePositionPacket : ClientPacket {
-		public readonly static int ID = 0x3C;
+		public readonly static int ID = 0x40;
 		public readonly static State STATE = State.Play;
 
 		public Vector3 playerPosition;
@@ -241,7 +257,7 @@ namespace API {
 	}
 
 	public class ClientRespawnPacket : ClientPacket {
-		public readonly static int ID = 0x41;
+		public readonly static int ID = 0x47;
 		public readonly static State STATE = State.Play;
 
 		public readonly string dimensionType;
@@ -271,7 +287,7 @@ namespace API {
 	}
 
 	public class ClientUpdateTimePacket : ClientPacket {
-		public readonly static int ID = 0x5E;
+		public readonly static int ID = 0x64;
 		public readonly static State STATE = State.Play;
 
 		public readonly long worldAge;

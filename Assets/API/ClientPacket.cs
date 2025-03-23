@@ -31,27 +31,27 @@ namespace API {
 		internal MemoryStream buffer;
 
 		public static ClientPacket Parse(byte[] buffer, State state) {
-			// try {
-			int id = ReadVarInt(buffer);
+			try {
+				int id = ReadVarInt(buffer);
 
-			string[] ignored = { };
+				string[] ignored = { };
 
-			if (!ignored.Contains($"{state}:0x{id.ToString("x2").ToUpper()}")) {
-				Tuple<int, State, Func<byte[], ClientPacket>> tuple;
+				if (!ignored.Contains($"{state}:0x{id.ToString("x2").ToUpper()}")) {
+					Tuple<int, State, Func<byte[], ClientPacket>> tuple;
 
-				try {
-					tuple = ClientPacket.list.First(tuple => tuple.Item1.Equals(id) && tuple.Item2.Equals(state));
-					// Debug.Log($"Recieved packed {state}:0x{id:x2}");
-				} catch {
-					tuple = null;
-					// Debug.Log($"Recieved packed {state}:0x{id:x2}");
+					try {
+						tuple = ClientPacket.list.First(tuple => tuple.Item1.Equals(id) && tuple.Item2.Equals(state));
+						Debug.Log($"Recieved packed {state}:0x{id:x2}");
+					} catch {
+						tuple = null;
+						Debug.Log($"Recieved packed {state}:0x{id:x2}");
+					}
+
+					if (tuple != null) return tuple.Item3(buffer);
 				}
-
-				if (tuple != null) return tuple.Item3(buffer);
-			}
-			/* } catch (Exception e) {
+			} catch (Exception e) {
 				Debug.LogError($"Unvalid packet: {e.Message}");
-			} */
+			}
 
 			return null;
 		}
@@ -225,13 +225,13 @@ namespace API {
 
 			NbtFile file = new();
 
-			// try {
-			file.LoadFromStream(this.buffer, NbtCompression.None);
-			return file.RootTag;
-			/* } catch (Exception e) {
+			try {
+				file.LoadFromStream(this.buffer, NbtCompression.None);
+				return file.RootTag;
+			} catch (Exception e) {
 				Debug.LogError($"Failed to parse NBT in packet {this.state}:0x{this.id:x2}: {e.Message}");
 				return new();
-			} */
+			}
 		}
 	}
 }

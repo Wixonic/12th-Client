@@ -3,6 +3,7 @@ namespace API {
 		Handshake = 0x00,
 		Status = 0x01,
 		Login = 0x02,
-		Play = 0x03
+		Configuration = 0x03,
+		Play = 0x04
 	}
 }
