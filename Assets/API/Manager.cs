@@ -72,7 +72,7 @@ namespace API {
 
 		public void Send(ServerPacket packet) {
 			if (this.state.Equals(packet.state) && Side.Server.Equals(packet.side)) {
-				// Debug.Log($"Sending packet {this.state}:0x{packet.id:x2}");
+				Debug.Log($"Sending packet {this.state}:0x{packet.id:x2}");
 
 				lock (this.bufferLock) {
 					this.buffer = new();

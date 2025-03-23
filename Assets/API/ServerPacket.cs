@@ -13,7 +13,6 @@ namespace API {
 		public Span<byte> data { get => this.buffer.ToArray().AsSpan(); }
 
 		public ServerPacket(int id, State state) : base(id, state, SIDE) {
-			Debug.Log($"Sending packed {state}:0x{id:x2}");
 			this.WriteVarInt(id);
 		}
 
