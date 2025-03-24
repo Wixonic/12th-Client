@@ -1,3 +1,4 @@
+using SmartNbt.Tags;
 using System;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -7,69 +8,84 @@ namespace API {
 		public readonly int protocolVersion = 767;
 		public readonly Manager manager;
 
-		public Client() => this.manager = new();
+		public Client() => manager = new();
 
 		public async Task Connect(string ip, ushort? port, string username, Guid? uuid) {
-			await this.manager.Connect(ip, port ?? 25565);
+			await manager.Connect(ip, port ?? 25565);
 
-			// Disconnects
-			this.manager.AddListener(ClientDisconnectLoginPacket.ID, ClientDisconnectLoginPacket.STATE, (ClientPacket p) => {
-				ClientDisconnectLoginPacket packet = (ClientDisconnectLoginPacket)p;
-				this.Disconnect(packet.reason);
-			}, true);
-
-			this.manager.AddListener(ClientDisconnectConfigurationPacket.ID, ClientDisconnectConfigurationPacket.STATE, (ClientPacket p) => {
-				ClientDisconnectConfigurationPacket packet = (ClientDisconnectConfigurationPacket)p;
-				this.Disconnect("Unknown reason");
-			}, true);
-
-			this.manager.AddListener(ClientDisconnectPlayPacket.ID, ClientDisconnectPlayPacket.STATE, (ClientPacket p) => {
-				ClientDisconnectPlayPacket packet = (ClientDisconnectPlayPacket)p;
-				this.Disconnect(packet.reason);
-			}, true);
+			// Handshake
+			manager.Send(new ServerHandshakePacket(protocolVersion, ip, port ?? 25565, State.Login));
 
 			// Login
-			this.manager.AddListener(ClientEncryptionRequestPacket.ID, ClientEncryptionRequestPacket.STATE, (ClientPacket p) => Debug.LogError("The server is in online mode"), true);
+			manager.state = State.Login;
+			manager.Send(new ServerLoginStartPacket(username, uuid));
 
-			this.manager.AddListener(ClientLoginSuccessPacket.ID, ClientLoginSuccessPacket.STATE, (ClientPacket p) => {
-				ClientLoginSuccessPacket packet = (ClientLoginSuccessPacket)p;
+			manager.AddListener(ClientLoginDisconnectPacket.ID, ClientLoginDisconnectPacket.STATE, (ClientPacket p) => {
+				ClientLoginDisconnectPacket packet = (ClientLoginDisconnectPacket)p;
 
-				this.manager.Send(new ServerLoginAcknowledgedPacket());
-				this.manager.state = State.Configuration;
+				Disconnect(packet.reason);
 			}, true);
 
-			this.manager.AddListener(ClientSetCompressionPacket.ID, ClientSetCompressionPacket.STATE, (ClientPacket p) => {
-				ClientSetCompressionPacket packet = (ClientSetCompressionPacket)p;
-				this.manager.compression = packet.threshold;
-				Debug.LogWarning($"The server asks for compression: {packet.threshold}");
+			manager.AddListener(ClientLoginSuccessPacket.ID, ClientLoginSuccessPacket.STATE, (ClientPacket p) => {
+				ClientLoginSuccessPacket packet = (ClientLoginSuccessPacket)p;
+
+				manager.Send(new ServerLoginAcknowledgedPacket());
+				manager.state = State.Config;
 			}, true);
 
 			// Configuration
+			manager.AddListener(ClientConfigDisconnectPacket.ID, ClientConfigDisconnectPacket.STATE, (ClientPacket p) => {
+				ClientConfigDisconnectPacket packet = (ClientConfigDisconnectPacket)p;
 
-			// TODO: "Clientbound Known Packs", answer with "Serverbound Known Packs"
+				Disconnect(packet.reason.Contains("text") ? packet.reason.Get<NbtString>("text")?.Value ?? "Unknown reason" : "Unknown reason");
+			}, true);
+			
+			manager.AddListener(ClientConfigFinishPacket.ID, ClientConfigFinishPacket.STATE, (ClientPacket p) => {
+				manager.Send(new ServerConfigAcknowledgedPacket());
+				manager.state = State.Play;
+			}, true);
 
-			// TODO: "Finish Configuration", answer with "Acknowledge Finish Configuration" and set state to Play
+			manager.AddListener(ClientConfigKeepAlivePacket.ID, ClientConfigKeepAlivePacket.STATE, (ClientPacket p) => {
+				ClientConfigKeepAlivePacket packet = (ClientConfigKeepAlivePacket)p;
 
-			// Keep-Alive
-			// TODO: Add Clientbound Keep Alive when config also
-			this.manager.AddListener(ClientKeepAlivePacket.ID, ClientKeepAlivePacket.STATE, (ClientPacket p) => {
-				ClientKeepAlivePacket packet = (ClientKeepAlivePacket)p;
-				this.manager.Send(new ServerKeepAlivePacket(packet.keepAlive));
+				manager.Send(new ServerConfigKeepAlivePacket(packet.id));
 			});
 
-			// Ping
-			// TODO: Add Ping for Config and Play
+			manager.AddListener(ClientConfigPingPacket.ID, ClientConfigPingPacket.STATE, (ClientPacket p) => {
+				ClientConfigPingPacket packet = (ClientConfigPingPacket)p;
 
-			// Handshake
-			this.manager.Send(new ServerHandshakePacket(this.protocolVersion, ip, port ?? 25565, State.Login));
+				manager.Send(new ServerConfigPongPacket(packet.pingId));
+			});
 
-			// Login
-			this.manager.state = State.Login;
-			this.manager.Send(new ServerLoginStartPacket(username, uuid));
+			manager.AddListener(ClientConfigKnownPacksPacket.ID, ClientConfigKnownPacksPacket.STATE, (ClientPacket p) => {
+				ClientConfigKnownPacksPacket packet = (ClientConfigKnownPacksPacket)p;
+				
+				foreach (var pack in packet.knownPacks) Debug.Log($"Pack {pack.Item1}:{pack.Item2} v{pack.Item3}");
+				manager.Send(new ServerConfigKnownPacksPacket());
+			}, true);
+
+			// Play packets
+			manager.AddListener(ClientPlayDisconnectPacket.ID, ClientPlayDisconnectPacket.STATE, (ClientPacket p) => {
+				ClientPlayDisconnectPacket packet = (ClientPlayDisconnectPacket)p;
+				
+				Disconnect(packet.reason.Contains("text") ? packet.reason.Get<NbtString>("text")?.Value ?? "Unknown reason" : "Unknown reason");
+			}, true);
+
+			manager.AddListener(ClientPlayKeepAlivePacket.ID, ClientPlayKeepAlivePacket.STATE, (ClientPacket p) => {
+				ClientPlayKeepAlivePacket packet = (ClientPlayKeepAlivePacket)p;
+
+				manager.Send(new ServerPlayKeepAlivePacket(packet.keepAliveId));
+			});
+
+			manager.AddListener(ClientPlayPingPacket.ID, ClientPlayPingPacket.STATE, (ClientPacket p) => {
+				ClientPlayPingPacket packet = (ClientPlayPingPacket)p;
+
+				manager.Send(new ServerPlayPongPacket(packet.pingId));
+			});
 		}
 
 		public void Disconnect(string reason) {
-			this.manager.Disconnect();
+			manager.Disconnect();
 			Debug.LogError($"Disconnected: {reason}");
 		}
 	}

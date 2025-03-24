@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using API;
 using SmartNbt.Tags;
 using UnityEngine;
@@ -17,12 +18,12 @@ public class World : MonoBehaviour {
 	public Vector3 position = new(0, 0, 0);
 	public Quaternion rotation = new(0, 0, 0, 0);
 
-	public NbtCompound registeryCodec;
-	public int dimensionId;
+	public Dictionary<string, NbtCompound> registryCodec;
+	public string dimensionId;
 	public string dimensionName;
-	public string dimensionType;
+	public int dimensionType;
 
-	private readonly List<ClientChunkDataPacket> loadChunkColumnQueue = new();
+	private readonly List<ClientPlayChunkDataPacket> loadChunkColumnQueue = new();
 
 	public async void Start() {
 		World.current = this;
@@ -30,44 +31,51 @@ public class World : MonoBehaviour {
 		Prefabs.Load();
 
 		client = new();
-		await client.Connect("server.wixonic.fr", 25565, "12th_Client", Guid.Parse("52e485b75156498e8341dd44f4a38908"));
+		await client.Connect("server.wixonic.fr", 25565, "12th_Client_2", Guid.NewGuid());
 
-		Light light = this.sunlight.GetComponent<Light>();
+		Light light = sunlight.GetComponent<Light>();
 		light.type = LightType.Directional;
 
-		client.manager.AddListener(ClientLoginPlayPacket.ID, ClientLoginPlayPacket.STATE, (ClientPacket p) => {
-			ClientLoginPlayPacket packet = (ClientLoginPlayPacket)p;
+		client.manager.AddListener(ClientConfigRegistryDataPacket.ID, ClientConfigRegistryDataPacket.STATE, (ClientPacket p) => {
+			ClientConfigRegistryDataPacket packet = (ClientConfigRegistryDataPacket)p;
 
-			this.registeryCodec = packet.registeryCodec;
-			this.dimensionName = packet.dimensionName;
-			this.dimensionType = packet.dimensionType;
-			this.dimensionId = packet.dimensions.IndexOf(this.dimensionType);
+			registryCodec = packet.entries;
 		}, true);
 
-		client.manager.AddListener(ClientUpdateTimePacket.ID, ClientUpdateTimePacket.STATE, (ClientPacket p) => {
-			ClientUpdateTimePacket packet = (ClientUpdateTimePacket)p;
-			this.time = packet.time % 24000;
+		client.manager.AddListener(ClientPlayChunkBatchFinishedPacket.ID, ClientPlayChunkBatchFinishedPacket.STATE, (ClientPacket p) => client.manager.Send(new ServerPlayChunkBatchReceivedPacket(25)));
+
+		client.manager.AddListener(ClientPlayLoginPacket.ID, ClientPlayLoginPacket.STATE, (ClientPacket p) => {
+			ClientPlayLoginPacket packet = (ClientPlayLoginPacket)p;
+
+			dimensionName = packet.dimensionName;
+			dimensionType = packet.dimensionType;
+		}, true);
+
+		client.manager.AddListener(ClientPlayChunkDataPacket.ID, ClientPlayChunkDataPacket.STATE, (ClientPacket p) => {
+			ClientPlayChunkDataPacket packet = (ClientPlayChunkDataPacket)p;
+
+			loadChunkColumnQueue.Add(packet);
 		});
 
-		client.manager.AddListener(ClientSynchronizePositionPacket.ID, ClientSynchronizePositionPacket.STATE, (ClientPacket p) => {
-			ClientSynchronizePositionPacket packet = (ClientSynchronizePositionPacket)p;
-
-			this.position = packet.playerPosition;
-			this.rotation = packet.playerRotation;
-
-			this.client.manager.Send(new ServerConfirmTeleportationPacket(packet.teleportId));
+		client.manager.AddListener(ClientPlayUpdateTimePacket.ID, ClientPlayUpdateTimePacket.STATE, (ClientPacket p) => {
+			ClientPlayUpdateTimePacket packet = (ClientPlayUpdateTimePacket)p;
+			time = packet.time % 24000;
 		});
 
-		client.manager.AddListener(ClientChunkDataPacket.ID, ClientChunkDataPacket.STATE, (ClientPacket p) => {
-			ClientChunkDataPacket packet = (ClientChunkDataPacket)p;
-			this.loadChunkColumnQueue.Add(packet);
+		client.manager.AddListener(ClientPlaySynchronizePositionPacket.ID, ClientPlaySynchronizePositionPacket.STATE, (ClientPacket p) => {
+			ClientPlaySynchronizePositionPacket packet = (ClientPlaySynchronizePositionPacket)p;
+
+			position = packet.playerPosition;
+			rotation = packet.playerRotation;
+
+			client.manager.Send(new ServerPlayConfirmTeleportationPacket(packet.teleportId));
 		});
 	}
 
 	public void LoadChunkColumn(int chunkX, int chunkZ, List<List<List<List<int>>>> column) {
 		GameObject chunkColumn = Instantiate(Prefabs.Get("Chunk"));
 		chunkColumn.name = $"chunkColumn_{chunkX}-{chunkZ}";
-		chunkColumn.transform.SetParent(this.map.transform);
+		chunkColumn.transform.SetParent(map.transform);
 
 		for (int chunkY = 0; chunkY < column.Count; ++chunkY) {
 			GameObject chunkSection = Instantiate(Prefabs.Get("Chunk"));
@@ -80,13 +88,13 @@ public class World : MonoBehaviour {
 				for (int z = 0; z < blocks[y].Count; ++z) {
 					for (int x = 0; x < blocks[y][z].Count; ++x) {
 						int id = blocks[y][z][x];
-						string registeryId = Registeries.blocks.GetValueOrDefault(id, "Error");
+						string registryId = Registries.blocks.GetValueOrDefault(id, "Error");
 
-						if (registeryId != "Air") {
-							GameObject prefab = Prefabs.Get($"Blocks/{registeryId}");
+						if (registryId != "Air") {
+							GameObject prefab = Prefabs.Get($"Blocks/{registryId}");
 							GameObject block = Instantiate(prefab);
 
-							block.name = $"{registeryId}_{x}-{y}-{z}";
+							block.name = $"{registryId}_{x}-{y}-{z}";
 
 							block.transform.SetParent(chunkSection.transform);
 							block.transform.position = new(x, y, z);
@@ -102,17 +110,49 @@ public class World : MonoBehaviour {
 	}
 
 	public void FixedUpdate() {
-		this.camera.transform.SetPositionAndRotation(this.position, this.rotation);
-		this.sunlight.transform.rotation = Quaternion.Euler(this.time / 24000 * 360, 0, 0);
+		camera.transform.SetPositionAndRotation(position, rotation);
+		sunlight.transform.rotation = Quaternion.Euler(time / 24000 * 360, 0, 0);
 
-		if (this.loadChunkColumnQueue.Count > 0) {
-			ClientChunkDataPacket packet = this.loadChunkColumnQueue.First();
-			this.LoadChunkColumn(packet.chunkX, packet.chunkZ, packet.column);
-			this.loadChunkColumnQueue.Remove(packet);
+		if (loadChunkColumnQueue.Count > 0) {
+			ClientPlayChunkDataPacket packet = loadChunkColumnQueue.First();
+			LoadChunkColumn(packet.chunkX, packet.chunkZ, packet.column);
+			loadChunkColumnQueue.Remove(packet);
 		}
 	}
 
 	public void OnApplicationQuit() {
-		this.client.manager.Disconnect();
+		if (client?.manager != null) client.manager.Disconnect();
 	}
+
+	private string FormatNbt(NbtTag tag, int indent = 0)
+{
+    StringBuilder sb = new StringBuilder();
+    string indentStr = new string(' ', indent * 2);
+
+    if (tag is NbtCompound compound)
+    {
+        sb.AppendLine($"{indentStr}{{");
+        foreach (var child in compound)
+        {
+            sb.Append($"{indentStr}  {child.Name}: ");
+            sb.AppendLine(FormatNbt(child, indent + 1));
+        }
+        sb.Append($"{indentStr}}}");
+    }
+    else if (tag is NbtList list)
+    {
+        sb.AppendLine($"{indentStr}[");
+        foreach (var item in list)
+        {
+            sb.AppendLine(FormatNbt(item, indent + 1));
+        }
+        sb.Append($"{indentStr}]");
+    }
+    else
+    {
+        sb.AppendLine($"{indentStr}{tag.ToString()}");
+    }
+
+    return sb.ToString();
+}
 }

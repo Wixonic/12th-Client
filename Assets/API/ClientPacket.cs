@@ -8,230 +8,164 @@ using System.Text;
 using UnityEngine;
 
 namespace API {
-	public class ClientPacket : Packet {
-		public readonly static List<Tuple<int, State, Func<byte[], ClientPacket>>> list = new(){
-			new(ClientDisconnectLoginPacket.ID, ClientDisconnectLoginPacket.STATE, (byte[] buffer) => new ClientDisconnectLoginPacket(buffer)),
-			new(ClientDisconnectPlayPacket.ID, ClientDisconnectPlayPacket.STATE, (byte[] buffer) => new ClientDisconnectPlayPacket(buffer)),
+    public class ClientPacket : Packet {
+        public const Side SIDE = Side.Client;
+        private const int STRING_MAX = 32767;
+        private const int CHAT_MAX = 262144;
+        
+        public static readonly List<Tuple<int, State, Func<byte[], ClientPacket>>> list = new() {
+            // Login packets
+            new(ClientLoginDisconnectPacket.ID, ClientLoginDisconnectPacket.STATE, b => new ClientLoginDisconnectPacket(b)),
+            new(ClientLoginSuccessPacket.ID, ClientLoginSuccessPacket.STATE, b => new ClientLoginSuccessPacket(b)),
 
-			new(ClientEncryptionRequestPacket.ID, ClientEncryptionRequestPacket.STATE, (byte[] buffer) => new ClientEncryptionRequestPacket(buffer)),
-			new(ClientLoginSuccessPacket.ID, ClientLoginSuccessPacket.STATE, (byte[] buffer) => new ClientLoginSuccessPacket(buffer)),
-			new(ClientSetCompressionPacket.ID, ClientSetCompressionPacket.STATE, (byte[] buffer) => new ClientSetCompressionPacket(buffer)),
-			new(ClientLoginPluginRequestPacket.ID, ClientLoginPluginRequestPacket.STATE, (byte[] buffer) => new ClientLoginPluginRequestPacket(buffer)),
+            // Config packets
+            new(ClientConfigDisconnectPacket.ID, ClientConfigDisconnectPacket.STATE, b => new ClientConfigDisconnectPacket(b)),
+            new(ClientConfigFinishPacket.ID, ClientConfigFinishPacket.STATE, b => new ClientConfigFinishPacket(b)),
+            new(ClientConfigKeepAlivePacket.ID, ClientConfigKeepAlivePacket.STATE, b => new ClientConfigKeepAlivePacket(b)),
+            new(ClientConfigPingPacket.ID, ClientConfigPingPacket.STATE, b => new ClientConfigPingPacket(b)),
+            new(ClientConfigRegistryDataPacket.ID, ClientConfigRegistryDataPacket.STATE, b => new ClientConfigRegistryDataPacket(b)),
+            new(ClientConfigKnownPacksPacket.ID, ClientConfigKnownPacksPacket.STATE, b => new ClientConfigKnownPacksPacket(b)),
 
-			new(ClientLoginPlayPacket.ID, ClientLoginPlayPacket.STATE, (byte[] buffer) => new ClientLoginPlayPacket(buffer)),
+            // Play packets
+            new(ClientPlayChunkBatchFinishedPacket.ID, ClientPlayChunkBatchFinishedPacket.STATE, b => new ClientPlayChunkBatchFinishedPacket(b)),
+            new(ClientPlayDisconnectPacket.ID, ClientPlayDisconnectPacket.STATE, b => new ClientPlayDisconnectPacket(b)),
+            new(ClientPlayChangeDifficultyPacket.ID, ClientPlayChangeDifficultyPacket.STATE, b => new ClientPlayChangeDifficultyPacket(b)),
+            new(ClientPlayLoginPacket.ID, ClientPlayLoginPacket.STATE, b => new ClientPlayLoginPacket(b)),
+            new(ClientPlayChunkDataPacket.ID, ClientPlayChunkDataPacket.STATE, b => new ClientPlayChunkDataPacket(b)),
+            new(ClientPlayKeepAlivePacket.ID, ClientPlayKeepAlivePacket.STATE, b => new ClientPlayKeepAlivePacket(b)),
+            new(ClientPlayPingPacket.ID, ClientPlayPingPacket.STATE, b => new ClientPlayPingPacket(b)),
+            new(ClientPlaySynchronizePositionPacket.ID, ClientPlaySynchronizePositionPacket.STATE, b => new ClientPlaySynchronizePositionPacket(b)),
+            new(ClientPlayUpdateTimePacket.ID, ClientPlayUpdateTimePacket.STATE, b => new ClientPlayUpdateTimePacket(b))
+        };
 
-			new(ClientBundleDelimiterPacket.ID, ClientBundleDelimiterPacket.STATE, (byte[] buffer) => new ClientBundleDelimiterPacket(buffer)),
-			new(ClientKeepAlivePacket.ID, ClientKeepAlivePacket.STATE, (byte[] buffer) => new ClientKeepAlivePacket(buffer)),
-			new(ClientChunkDataPacket.ID, ClientChunkDataPacket.STATE, (byte[] buffer) => new ClientChunkDataPacket(buffer)),
-			new(ClientSynchronizePositionPacket.ID, ClientSynchronizePositionPacket.STATE, (byte[] buffer) => new ClientSynchronizePositionPacket(buffer)),
-			new(ClientRespawnPacket.ID, ClientRespawnPacket.STATE, (byte[] buffer) => new ClientRespawnPacket(buffer)),
-			new(ClientUpdateTimePacket.ID, ClientUpdateTimePacket.STATE, (byte[] buffer) => new ClientUpdateTimePacket(buffer))
-		};
+        internal MemoryStream buffer;
 
-		internal MemoryStream buffer;
+        public static ClientPacket Parse(byte[] buffer, State state) {
+            try {
+                using var ms = new MemoryStream(buffer);
+                int id = ReadVarIntStatic(ms);
+                
+                Debug.Log($"Recieved packed {state}:0x{id:x2}");
+                
+                byte[] remainingBuffer = new byte[buffer.Length - ms.Position];
+                Buffer.BlockCopy(buffer, (int)ms.Position, remainingBuffer, 0, remainingBuffer.Length);
 
-		public static ClientPacket Parse(byte[] buffer, State state) {
-			try {
-				int id = ReadVarInt(buffer);
+                var tuple = list.FirstOrDefault(t => t.Item1 == id && t.Item2 == state);
+                if (tuple != null) return tuple.Item3(remainingBuffer);
+                
+                Debug.LogWarning($"[Net] Unknown {state} packet: 0x{id:X2}");
+            } catch (Exception e) {
+                Debug.LogError($"[Net] Parse error: {e.Message}\n{e.StackTrace}");
+            }
+            return null;
+        }
 
-				string[] ignored = { };
+        public ClientPacket(byte[] buffer, int id, State state) : base(id, state, SIDE) {
+            this.buffer = new MemoryStream(buffer);
+        }
 
-				if (!ignored.Contains($"{state}:0x{id.ToString("x2").ToUpper()}")) {
-					Tuple<int, State, Func<byte[], ClientPacket>> tuple;
+        public byte ReadByte() => (byte)buffer.ReadByte();
+        public sbyte ReadSByte() => (sbyte)ReadByte();
+        public bool ReadBoolean() => ReadByte() != 0;
+        
+        public byte[] ReadBytes(int count) {
+            var result = new byte[count];
+            if (buffer.Read(result, 0, count) != count) throw new EndOfStreamException();
+            return result;
+        }
 
-					try {
-						tuple = ClientPacket.list.First(tuple => tuple.Item1.Equals(id) && tuple.Item2.Equals(state));
-						Debug.Log($"Recieved packed {state}:0x{id:x2}");
-					} catch {
-						tuple = null;
-						Debug.Log($"Recieved packed {state}:0x{id:x2}");
-					}
+        public short ReadShort(bool bigEndian = false) => BitConverter.ToInt16(AdjustEndian(2, bigEndian), 0);
+        public ushort ReadUShort(bool bigEndian = false) => BitConverter.ToUInt16(AdjustEndian(2, bigEndian), 0);
+        public int ReadInt(bool bigEndian = false) => BitConverter.ToInt32(AdjustEndian(4, bigEndian), 0);
+        public uint ReadUInt(bool bigEndian = false) => BitConverter.ToUInt32(AdjustEndian(4, bigEndian), 0);
+        public long ReadLong(bool bigEndian = false) => BitConverter.ToInt64(AdjustEndian(8, bigEndian), 0);
+        public ulong ReadULong(bool bigEndian = false) => BitConverter.ToUInt64(AdjustEndian(8, bigEndian), 0);
+        public float ReadFloat(bool bigEndian = false) => BitConverter.ToSingle(AdjustEndian(4, bigEndian), 0);
+        public double ReadDouble(bool bigEndian = false) => BitConverter.ToDouble(AdjustEndian(8, bigEndian), 0);
 
-					if (tuple != null) return tuple.Item3(buffer);
-				}
-			} catch (Exception e) {
-				Debug.LogError($"Unvalid packet: {e.Message}");
-			}
+        public int ReadVarInt() {
+            uint value = 0;
+            int shift = 0;
+            byte b;
+            do {
+                b = ReadByte();
+                value |= (uint)(b & 0x7F) << shift;
+                if ((shift += 7) > 35) throw new OverflowException("VarInt >5 bytes");
+            } while ((b & 0x80) != 0);
+            return (int)value;
+        }
 
-			return null;
-		}
+        public long ReadVarLong() {
+            ulong value = 0;
+            int shift = 0;
+            byte b;
+            do {
+                b = ReadByte();
+                value |= (ulong)(b & 0x7F) << shift;
+                if ((shift += 7) > 70) throw new OverflowException("VarLong >10 bytes");
+            } while ((b & 0x80) != 0);
+            return (long)value;
+        }
 
-		public static int ReadVarInt(byte[] buffer) {
-			int value = 0;
-			int shift = 0;
+        public Vector3Int ReadPosition() {
+            long val = ReadLong();
+            return new Vector3Int((int)(val >> 38), (int)(val & 0xFFF), (int)((val >> 12) & 0x3FFFFFF));
+        }
 
-			int position = 0;
+        public Guid ReadUUID() {
+            byte[] bytes = ReadBytes(16);
+            return new Guid(new[] {
+                bytes[3], bytes[2], bytes[1], bytes[0], bytes[5], bytes[4], 
+                bytes[7], bytes[6], bytes[8], bytes[9], bytes[10], bytes[11],
+                bytes[12], bytes[13], bytes[14], bytes[15]
+            });
+        }
 
-			while (true) {
-				if (buffer.Length > position) {
-					byte b = buffer[position];
-					position++;
+        public string ReadString(int maxLength = STRING_MAX) {
+            int byteLength = ReadVarInt();
+            if (byteLength > maxLength * 4 + 3) throw new InvalidDataException($"String too long ({maxLength})");
+            return Encoding.UTF8.GetString(ReadBytes(byteLength));
+        }
 
-					value |= (b & 0x7f) << shift;
-					if ((b & 0x80) == 0x00) break;
-
-					shift += 7;
-					if (shift >= 32) throw new Exception("VarInt overflow");
-				}
-			}
-
-			return value;
-		}
-
-		public readonly static Side SIDE = Side.Client;
-
-		public ClientPacket(byte[] buffer, int id, State state) : base(id, state, SIDE) {
-			this.buffer = new(buffer);
-			this.ReadVarInt(); // Remove the Packet ID
-		}
-
-		public byte ReadByte() => (byte)this.buffer.ReadByte();
-
-		public byte[] ReadBytes(int count) {
-			MemoryStream bytes = new();
-			for (int x = 0; x < count; ++x) bytes.WriteByte(this.ReadByte());
-			return bytes.ToArray();
-		}
-
-		public sbyte ReadSByte() => (sbyte)this.ReadByte();
-
-		public bool ReadBoolean() => this.ReadByte() == 1;
-
-		public ushort ReadUShort(bool isBigEndian = false) {
-			int b0 = this.ReadByte();
-			int b1 = this.ReadByte();
-
-			if (BitConverter.IsLittleEndian && !isBigEndian) return (ushort)(b0 << 8 | b1);
-			return (ushort)(b0 | b1 << 8);
-		}
-
-		public short ReadShort(bool isBigEndian = false) => (short)this.ReadUShort(isBigEndian);
-
-		public uint ReadUInt(bool isBigEndian = false) {
-			int b0 = this.ReadByte();
-			int b1 = this.ReadByte();
-			int b2 = this.ReadByte();
-			int b3 = this.ReadByte();
-
-			if (BitConverter.IsLittleEndian && !isBigEndian) return (uint)(b0 << 24 | b1 << 16 | b2 << 8 | b3);
-			return (uint)(b0 | b1 << 8 | b2 << 16 | b3 << 24);
-		}
-
-		public int ReadInt(bool isBigEndian = false) => (int)this.ReadUInt(isBigEndian);
-
-		public ulong ReadULong(bool isBigEndian = false) {
-			long b0 = this.ReadByte();
-			long b1 = this.ReadByte();
-			long b2 = this.ReadByte();
-			long b3 = this.ReadByte();
-			long b4 = this.ReadByte();
-			long b5 = this.ReadByte();
-			long b6 = this.ReadByte();
-			long b7 = this.ReadByte();
-
-			if (BitConverter.IsLittleEndian && !isBigEndian) return (ulong)(b0 << 56 | b1 << 48 | b2 << 40 | b3 << 32 | b4 << 24 | b5 << 16 | b6 << 8 | b7);
-			return (ulong)(b0 | b1 << 8 | b2 << 16 | b3 << 24 | b4 << 32 | b5 << 40 | b6 << 48 | b7 << 56);
-		}
-
-		public long ReadLong(bool isBigEndian = false) => (long)this.ReadULong(isBigEndian);
-
-		public float ReadFloat(bool isBigEndian = false) {
-			byte[] bytes = this.ReadBytes(sizeof(float));
-
-			if (BitConverter.IsLittleEndian && !isBigEndian) bytes.Reverse();
-			return BitConverter.ToSingle(bytes);
-		}
-
-		public double ReadDouble(bool isBigEndian = false) {
-			byte[] bytes = this.ReadBytes(sizeof(double));
-
-			if (BitConverter.IsLittleEndian && !isBigEndian) bytes.Reverse();
-			return BitConverter.ToDouble(bytes);
-		}
-
-		public string ReadString(int maxLength = 0) {
-			int length = this.ReadVarInt();
-
-			if (maxLength > 0 && length > maxLength * 4 + 3) throw new IndexOutOfRangeException($"Found a string with {length} bytes, but expecting only {maxLength * 4 + 3} bytes - {this.state}:0x{this.id:x2}");
-
-			byte[] bytes = this.ReadBytes(length);
-
-			return Encoding.UTF8.GetString(bytes);
-		}
-
-		public string ReadChat() {
-			return this.ReadString(262144);
-		}
-
-		public string ReadIdentifier() {
-			return this.ReadString(32767);
-		}
-
-		public Guid ReadUUID() {
-			byte[] UUIDBytes = this.ReadBytes(16);
-
-			byte[] GuidBytes = {
-				UUIDBytes[4],
-				UUIDBytes[5],
-				UUIDBytes[6],
-				UUIDBytes[7],
-				UUIDBytes[2],
-				UUIDBytes[3],
-				UUIDBytes[0],
-				UUIDBytes[1],
-				UUIDBytes[15],
-				UUIDBytes[14],
-				UUIDBytes[13],
-				UUIDBytes[12],
-				UUIDBytes[11],
-				UUIDBytes[10],
-				UUIDBytes[9],
-				UUIDBytes[8]
-			};
-
-			return new Guid(GuidBytes);
-		}
-
-		public int ReadVarInt() {
-			int value = 0;
-			int shift = 0;
-
-			while (true) {
-				byte b = this.ReadByte();
-				value |= (b & 0x7f) << shift;
-				if ((b & 0x80) == 0x00) break;
-
-				shift += 7;
-				if (shift >= 32) throw new Exception("VarInt overflow");
-			}
-
-			return value;
-		}
-
-		public Vector3Int ReadPosition() {
-			ulong value = this.ReadULong();
-			Vector3Int vector = new((int)value >> 38, (int)value & 0xFFF, (int)value >> 12 & 0x3FFFFFF);
-
-			if (vector.x >= Math.Pow(2, 25)) { vector.x -= (int)Math.Pow(2, 26); }
-			if (vector.y >= Math.Pow(2, 11)) { vector.y -= (int)Math.Pow(2, 12); }
-			if (vector.z >= Math.Pow(2, 25)) { vector.z -= (int)Math.Pow(2, 26); }
-
-			return vector;
-		}
-
-		public NbtCompound ReadNBT() {
-			if (this.ReadByte() != 0x0a) return new NbtCompound("Empty or Broken");
-			else this.buffer.Position--;
+        public string ReadChat() => ReadString(CHAT_MAX);
+        public string ReadIdentifier() => ReadString(STRING_MAX);
+        
+        public long[] ReadLongArray() {
+            var arr = new long[ReadVarInt()];
+            for (int i = 0; i < arr.Length; i++) arr[i] = ReadLong();
+            return arr;
+        }
+        
+        public NbtCompound ReadNBT() {
+            byte type = ReadByte();
+            if (type != 0x0A) throw new InvalidDataException($"Invalid NBT: Expected 0x0A, but got instead 0x{type:X2}");
+			buffer.Position--;
 
 			NbtFile file = new();
 
 			try {
-				file.LoadFromStream(this.buffer, NbtCompression.None);
+				file.LoadFromStream(buffer, NbtCompression.None);
 				return file.RootTag;
 			} catch (Exception e) {
-				Debug.LogError($"Failed to parse NBT in packet {this.state}:0x{this.id:x2}: {e.Message}");
+				Debug.LogError($"Failed to parse NBT in packet {state}:0x{id:x2}: {e.Message}");
 				return new();
 			}
-		}
-	}
+        }
+
+        private byte[] AdjustEndian(int byteSize, bool bigEndian) {
+            var bytes = ReadBytes(byteSize);
+            if (bigEndian != BitConverter.IsLittleEndian) Array.Reverse(bytes);
+            return bytes;
+        }
+
+        private static int ReadVarIntStatic(Stream stream) {
+            int value = 0, shift = 0, b;
+        	while ((b = stream.ReadByte()) != -1) {
+                value |= (b & 0x7F) << shift;
+                if ((shift += 7) > 35) throw new OverflowException();
+                if ((b & 0x80) == 0) break;
+            }
+            return value;
+        }
+    }
 }
