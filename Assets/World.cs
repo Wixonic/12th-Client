@@ -18,8 +18,7 @@ public class World : MonoBehaviour {
 	public Vector3 position = new(0, 0, 0);
 	public Quaternion rotation = new(0, 0, 0, 0);
 
-	public Dictionary<string, NbtCompound> registryCodec;
-	public string dimensionId;
+	public Dictionary<string, Dictionary<string, NbtCompound>> registries = new();
 	public string dimensionName;
 	public int dimensionType;
 
@@ -39,8 +38,9 @@ public class World : MonoBehaviour {
 		client.manager.AddListener(ClientConfigRegistryDataPacket.ID, ClientConfigRegistryDataPacket.STATE, (ClientPacket p) => {
 			ClientConfigRegistryDataPacket packet = (ClientConfigRegistryDataPacket)p;
 
-			registryCodec = packet.entries;
-		}, true);
+			registries[packet.registryId] = packet.entries;
+			Debug.Log($"Registry n°{registries.Keys.ToArray().Length}, \"{packet.registryId}\" added.");
+		});
 
 		client.manager.AddListener(ClientPlayChunkBatchFinishedPacket.ID, ClientPlayChunkBatchFinishedPacket.STATE, (ClientPacket p) => client.manager.Send(new ServerPlayChunkBatchReceivedPacket(25)));
 
@@ -55,7 +55,7 @@ public class World : MonoBehaviour {
 			ClientPlayChunkDataPacket packet = (ClientPlayChunkDataPacket)p;
 
 			loadChunkColumnQueue.Add(packet);
-		});
+		}, true); // Dev only
 
 		client.manager.AddListener(ClientPlayUpdateTimePacket.ID, ClientPlayUpdateTimePacket.STATE, (ClientPacket p) => {
 			ClientPlayUpdateTimePacket packet = (ClientPlayUpdateTimePacket)p;
@@ -73,40 +73,11 @@ public class World : MonoBehaviour {
 	}
 
 	public void LoadChunkColumn(int chunkX, int chunkZ, List<List<List<List<int>>>> column) {
-		GameObject chunkColumn = Instantiate(Prefabs.Get("Chunk"));
-		chunkColumn.name = $"chunkColumn_{chunkX}-{chunkZ}";
-		chunkColumn.transform.SetParent(map.transform);
-
-		for (int chunkY = 0; chunkY < column.Count; ++chunkY) {
-			GameObject chunkSection = Instantiate(Prefabs.Get("Chunk"));
-			chunkSection.name = $"chunkSection_{chunkY}";
-			chunkSection.transform.SetParent(chunkColumn.transform);
-
-			var blocks = column[chunkY];
-
-			for (int y = 0; y < blocks.Count; ++y) {
-				for (int z = 0; z < blocks[y].Count; ++z) {
-					for (int x = 0; x < blocks[y][z].Count; ++x) {
-						int id = blocks[y][z][x];
-						string registryId = Registries.blocks.GetValueOrDefault(id, "Error");
-
-						if (registryId != "Air") {
-							GameObject prefab = Prefabs.Get($"Blocks/{registryId}");
-							GameObject block = Instantiate(prefab);
-
-							block.name = $"{registryId}_{x}-{y}-{z}";
-
-							block.transform.SetParent(chunkSection.transform);
-							block.transform.position = new(x, y, z);
-						}
-					}
-				}
-			}
-
-			chunkSection.transform.position = new(0, chunkY * 16, 0);
-		}
-
-		chunkColumn.transform.position = new(chunkX * 16, 0, chunkZ * 16);
+		GameObject chunkObj = new GameObject($"Chunk_{chunkX}_{chunkZ}");
+		ChunkRenderer renderer = chunkObj.AddComponent<ChunkRenderer>();
+		renderer.meshFilter = chunkObj.AddComponent<MeshFilter>();
+		renderer.meshCollider = chunkObj.AddComponent<MeshCollider>();
+		renderer.BuildChunkMesh(column, chunkX, chunkZ);
 	}
 
 	public void FixedUpdate() {
@@ -123,36 +94,4 @@ public class World : MonoBehaviour {
 	public void OnApplicationQuit() {
 		if (client?.manager != null) client.manager.Disconnect();
 	}
-
-	private string FormatNbt(NbtTag tag, int indent = 0)
-{
-    StringBuilder sb = new StringBuilder();
-    string indentStr = new string(' ', indent * 2);
-
-    if (tag is NbtCompound compound)
-    {
-        sb.AppendLine($"{indentStr}{{");
-        foreach (var child in compound)
-        {
-            sb.Append($"{indentStr}  {child.Name}: ");
-            sb.AppendLine(FormatNbt(child, indent + 1));
-        }
-        sb.Append($"{indentStr}}}");
-    }
-    else if (tag is NbtList list)
-    {
-        sb.AppendLine($"{indentStr}[");
-        foreach (var item in list)
-        {
-            sb.AppendLine(FormatNbt(item, indent + 1));
-        }
-        sb.Append($"{indentStr}]");
-    }
-    else
-    {
-        sb.AppendLine($"{indentStr}{tag.ToString()}");
-    }
-
-    return sb.ToString();
-}
 }

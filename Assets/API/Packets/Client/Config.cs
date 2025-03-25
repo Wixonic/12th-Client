@@ -56,20 +56,11 @@ namespace API {
 			registryId = ReadIdentifier();
 			
 			int entryCount = ReadVarInt();
-			Debug.Log((registryId, entryCount));
-			entries = new Dictionary<string, NbtCompound>(entryCount);
+			entries = new(entryCount);
 			
 			for (int i = 0; i < entryCount; i++) {
 				string entryName = ReadIdentifier();
 				bool hasData = ReadBoolean();
-
-				// DEBUG
-				int DebugBytes = 200;
-				Debug.Log((entryName, hasData, BitConverter.ToString(ReadBytes(DebugBytes))));
-				this.buffer.Position -= DebugBytes;
-				// DEBUG
-				
-				// Can't read NBT here? Why?
 				NbtCompound entryData = hasData ? ReadNBT() : new NbtCompound();
 				
 				entries[entryName] = entryData;

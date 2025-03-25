@@ -41,22 +41,16 @@ namespace API {
         internal MemoryStream buffer;
 
         public static ClientPacket Parse(byte[] buffer, State state) {
-            try {
-                using var ms = new MemoryStream(buffer);
-                int id = ReadVarIntStatic(ms);
-                
-                Debug.Log($"Recieved packed {state}:0x{id:x2}");
-                
-                byte[] remainingBuffer = new byte[buffer.Length - ms.Position];
-                Buffer.BlockCopy(buffer, (int)ms.Position, remainingBuffer, 0, remainingBuffer.Length);
+           using var ms = new MemoryStream(buffer);
+            int id = ReadVarIntStatic(ms);
+            
+            byte[] remainingBuffer = new byte[buffer.Length - ms.Position];
+            Buffer.BlockCopy(buffer, (int)ms.Position, remainingBuffer, 0, remainingBuffer.Length);
 
-                var tuple = list.FirstOrDefault(t => t.Item1 == id && t.Item2 == state);
-                if (tuple != null) return tuple.Item3(remainingBuffer);
-                
-                Debug.LogWarning($"[Net] Unknown {state} packet: 0x{id:X2}");
-            } catch (Exception e) {
-                Debug.LogError($"[Net] Parse error: {e.Message}\n{e.StackTrace}");
-            }
+            var tuple = list.FirstOrDefault(t => t.Item1 == id && t.Item2 == state);
+            if (tuple != null) return tuple.Item3(remainingBuffer);
+            
+            Debug.LogWarning($"[Net] Unknown {state} packet: 0x{id:X2}");
             return null;
         }
 
@@ -90,7 +84,7 @@ namespace API {
             do {
                 b = ReadByte();
                 value |= (uint)(b & 0x7F) << shift;
-                if ((shift += 7) > 35) throw new OverflowException("VarInt >5 bytes");
+                if ((shift += 7) > 35) throw new OverflowException("VarInt > 5 bytes");
             } while ((b & 0x80) != 0);
             return (int)value;
         }
@@ -102,7 +96,7 @@ namespace API {
             do {
                 b = ReadByte();
                 value |= (ulong)(b & 0x7F) << shift;
-                if ((shift += 7) > 70) throw new OverflowException("VarLong >10 bytes");
+                if ((shift += 7) > 70) throw new OverflowException("VarLong > 10 bytes");
             } while ((b & 0x80) != 0);
             return (long)value;
         }
@@ -137,19 +131,23 @@ namespace API {
         }
         
         public NbtCompound ReadNBT() {
-            byte type = ReadByte();
-            if (type != 0x0A) throw new InvalidDataException($"Invalid NBT: Expected 0x0A, but got instead 0x{type:X2}");
-			buffer.Position--;
+            int tag = buffer.ReadByte();
+            if (tag != 0x0A) throw new Exception($"Invalid root tag type: Expected 0x0A but got instead 0x{tag:X2}");
 
-			NbtFile file = new();
+            MemoryStream tempStream = new MemoryStream();
+            tempStream.WriteByte((byte)tag);
+            tempStream.WriteByte(0x00);
+            tempStream.WriteByte(0x00);
+            byte[] remaining = new byte[buffer.Length - buffer.Position];
+            buffer.Read(remaining, 0, remaining.Length);
+            tempStream.Write(remaining, 0, remaining.Length);
+            tempStream.Position = 0;
+            buffer = tempStream;
 
-			try {
-				file.LoadFromStream(buffer, NbtCompression.None);
-				return file.RootTag;
-			} catch (Exception e) {
-				Debug.LogError($"Failed to parse NBT in packet {state}:0x{id:x2}: {e.Message}");
-				return new();
-			}
+            NbtFile file = new();
+
+			file.LoadFromStream(buffer, NbtCompression.None);
+			return file.RootTag;
         }
 
         private byte[] AdjustEndian(int byteSize, bool bigEndian) {

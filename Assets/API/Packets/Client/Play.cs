@@ -1,6 +1,8 @@
 using SmartNbt.Tags;
+using SmartNbt.Exceptions;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace API {
@@ -56,14 +58,16 @@ namespace API {
 		public const int SECTION_COUNT = 24;
 		public const int SECTION_WIDTH = 16;
 		public const int SECTION_HEIGHT = 16;
+		public const int BIOME_SECTION_WIDTH = 4;
+		public const int BIOME_SECTION_HEIGHT = 4;
 
 		public const int ID = 0x27;
 
 		public readonly int chunkX;
 		public readonly int chunkZ;
 		public readonly NbtCompound heightmaps;
-		public readonly List<List<List<List<int>>>> column;
-		public readonly List<Tuple<Vector3, int, NbtCompound>> blockEntities;
+		public readonly List<List<List<List<int>>>> column = new();
+		public readonly List<Tuple<Vector3, int, NbtCompound>> blockEntities = new();
 
 		public ClientPlayChunkDataPacket(byte[] buffer) : base(buffer, ID) {
 			chunkX = ReadInt();
@@ -79,22 +83,20 @@ namespace API {
 			int dataLength = ReadVarInt();
 			long dataEnd = this.buffer.Position + dataLength;
 
-			if (World.current.registryCodec != null && 
-				World.current.registryCodec.TryGetValue("minecraft:dimension_type", out var dimensionRegistry)) {
-				var dimensionEntry = dimensionRegistry["value"][World.current.dimensionId]["element"];
-				int minY = dimensionEntry["min_y"].IntValue;
-				int height = dimensionEntry["height"].IntValue;
-				int sectionCount = (minY + height) / SECTION_HEIGHT;
+			if (World.current.registries.TryGetValue("minecraft:dimension_type", out var registry)) {
+				if (registry.TryGetValue(World.current.dimensionName, out var dimensionEntry)) {
+					int height = dimensionEntry["height"].IntValue;
+					int sectionCount = height / SECTION_HEIGHT;
 
-				for (int sectionY = 0; sectionY < sectionCount; sectionY++) {
-					short blockCount = ReadShort();
-					column.Add(ReadPalette());
-					ReadPalette(isBiome: true); // Skip biome palette
-				}
-			} else {
-				Debug.LogError($"[Chunk] Dimension registry missing! Current registries: {(World.current.registryCodec == null ? "null" : string.Join(", ", World.current.registryCodec.Keys))}");
-				this.buffer.Position = dataEnd;
-			}
+					column = new List<List<List<List<int>>>>(sectionCount);
+
+					for (int sectionY = 0; sectionY < sectionCount; sectionY++) {
+						short blockCount = ReadShort();
+						column.Add(ReadPalette());
+						ReadPalette(isBiome: true);
+					}
+				} else Debug.LogError($"[Chunk] Dimension entry missing");
+			} else Debug.LogError($"[Chunk] Dimension registry missing");
 
 			this.buffer.Position = dataEnd;
 
@@ -102,43 +104,59 @@ namespace API {
 			blockEntities = new List<Tuple<Vector3, int, NbtCompound>>(blockEntityCount);
 			for (int i = 0; i < blockEntityCount; i++) {
 				byte packedXZ = ReadByte();
-				short y = ReadShort();
+				short yPos = ReadShort();
 				int type = ReadVarInt();
 				
 				try {
+					Vector3 pos = new Vector3(
+						chunkX * SECTION_WIDTH + ((packedXZ >> 4) & 0x0F),
+						yPos,
+						chunkZ * SECTION_WIDTH + (packedXZ & 0x0F)
+					);
 					NbtCompound data = ReadNBT();
-					blockEntities.Add(Tuple.Create(new Vector3((packedXZ >> 4) & 0x0F, y, packedXZ & 0x0F), type, data));
+					blockEntities.Add(Tuple.Create(pos, type, data));
 				} catch (Exception e) {
-					Debug.LogError($"[Chunk] Block entity NBT error: {e.Message}");
+					Debug.LogError($"[Chunk] Block entity error: {e.Message}");
 				}
 			}
 		}
 
 		private List<List<List<int>>> ReadPalette(bool isBiome = false) {
-			List<List<List<int>>> sectionData = new();
 			int bitsPerBlock = ReadByte();
 			int paletteSize = ReadVarInt();
+			List<int> palette = new List<int>();
 
-			if (bitsPerBlock == 0) ReadVarInt();
-			else {
-				List<int> palette = new();
-				for (int i = 0; i < paletteSize; i++) palette.Add(ReadVarInt());
+			if (bitsPerBlock == 0) palette.Add(ReadVarInt());
+			else for (int i = 0; i < paletteSize; i++) palette.Add(ReadVarInt());
 
+			int ySize = isBiome ? BIOME_SECTION_HEIGHT : SECTION_HEIGHT;
+			int zSize = isBiome ? BIOME_SECTION_WIDTH : SECTION_WIDTH;
+			int xSize = isBiome ? BIOME_SECTION_WIDTH : SECTION_WIDTH;
+
+			List<List<List<int>>> sectionData = new();
+
+			if (bitsPerBlock != 0) {
 				long[] blockStates = ReadLongArray();
 				int valuesPerLong = 64 / bitsPerBlock;
-				
-				for (int y = 0; y < SECTION_HEIGHT; y++) {
+
+				for (int y = 0; y < ySize; y++) {
 					List<List<int>> yLayer = new();
-					
-					for (int z = 0; z < SECTION_WIDTH; z++) {
+
+					for (int z = 0; z < zSize; z++) {
 						List<int> zRow = new();
 
-						for (int x = 0; x < SECTION_WIDTH; x++) {
-							int index = y * SECTION_WIDTH * SECTION_WIDTH + z * SECTION_WIDTH + x;
-							int longIndex = index / valuesPerLong;
-							int bitOffset = (index % valuesPerLong) * bitsPerBlock;
-							int state = (int)(blockStates[longIndex] >> bitOffset) & ((1 << bitsPerBlock) - 1);
+						for (int x = 0; x < xSize; x++) {
+							int index = isBiome ? y * (BIOME_SECTION_WIDTH * BIOME_SECTION_WIDTH) + z * BIOME_SECTION_WIDTH + x : y * (SECTION_WIDTH * SECTION_WIDTH) + z * SECTION_WIDTH + x;
 							
+							int longIdx = index / valuesPerLong;
+							int bitOffset = (index % valuesPerLong) * bitsPerBlock;
+							int state = 0;
+
+							if (longIdx < blockStates.Length) {
+								state = (int)((blockStates[longIdx] >> bitOffset) & ((1 << bitsPerBlock) - 1));
+								if (state >= palette.Count) state = 0;
+							}
+
 							zRow.Add(palette[state]);
 						}
 
@@ -147,8 +165,15 @@ namespace API {
 
 					sectionData.Add(yLayer);
 				}
+			} else {
+				int value = palette.Count > 0 ? palette[0] : 0;
+				for (int y = 0; y < ySize; y++) {
+					List<List<int>> yLayer = new();
+					for (int z = 0; z < zSize; z++) yLayer.Add(Enumerable.Repeat(value, xSize).ToList());
+					sectionData.Add(yLayer);
+				}
 			}
-			
+
 			return sectionData;
 		}
 	}
