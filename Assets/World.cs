@@ -104,7 +104,7 @@ public class World : MonoBehaviour {
         ProcessDirection(Direction.East, blocks, meshData);
         ProcessDirection(Direction.West, blocks, meshData);
 
-        if (meshData.IsEmpty()) {
+       if (meshData.IsEmpty()) {
             GameObject.Destroy(chunkObj);
             return;
         }
@@ -320,6 +320,10 @@ public class ChunkMeshData {
     }
 
     public bool IsEmpty() {
-        return verticesByMaterial.Count == 0;
+        foreach (var vertices in verticesByMaterial.Values) {
+            if (vertices.Count > 0) return false;
+        }
+        
+        return true;
     }
 }
