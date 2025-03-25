@@ -13,22 +13,24 @@ public class ChunkRenderer : MonoBehaviour {
     List<Vector2> uvs = new List<Vector2>();
     
     bool[,,] solidMap = new bool[SECTION_SIZE, SECTION_SIZE, SECTION_SIZE];
+    List<List<List<int>>> currentSection;
 
     public void BuildChunkMesh(List<List<List<List<int>>>> column, int chunkX, int chunkZ) {
         foreach (var section in column) {
-            PreprocessSection(section);
-            GenerateSectionMesh(section);
+            currentSection = section;
+            PreprocessSection();
+            GenerateSectionMesh();
         }
         
         FinalizeMesh();
         transform.position = new Vector3(chunkX * SECTION_SIZE, 0, chunkZ * SECTION_SIZE);
     }
 
-    void PreprocessSection(List<List<List<int>>> section) {
+    void PreprocessSection() {
         for (int y = 0; y < SECTION_SIZE; y++) {
             for (int z = 0; z < SECTION_SIZE; z++) {
                 for (int x = 0; x < SECTION_SIZE; x++) {
-                    int blockId = section[y][z][x];
+                    int blockId = currentSection[y][z][x];
                     solidMap[x, y, z] = blockId != 0 && IsBlockSolid(blockId);
                 }
             }
@@ -36,33 +38,33 @@ public class ChunkRenderer : MonoBehaviour {
     }
 
     bool IsBlockSolid(int blockId) {
-        if (API.Registries.blocks.TryGetValue(blockId, out string blockName)) {
+        if (Registries.blocks.TryGetValue(blockId, out string blockName)) {
             return blockName != "Air" && blockName != "Water" && blockName != "Glass";
         }
         return false;
     }
 
-    void GenerateSectionMesh(List<List<List<int>>> section) {
+    void GenerateSectionMesh() {
         for (int y = 0; y < SECTION_SIZE; y++) {
             for (int z = 0; z < SECTION_SIZE; z++) {
                 for (int x = 0; x < SECTION_SIZE; x++) {
-                    int blockId = section[y][z][x];
+                    int blockId = currentSection[y][z][x];
                     if (blockId == 0) continue;
 
-                    CheckFace(x, y, z, Direction.Up);
-                    CheckFace(x, y, z, Direction.Down);
-                    CheckFace(x, y, z, Direction.North);
-                    CheckFace(x, y, z, Direction.South);
-                    CheckFace(x, y, z, Direction.East);
-                    CheckFace(x, y, z, Direction.West);
+                    CheckFace(x, y, z, Direction.Up, blockId);
+                    CheckFace(x, y, z, Direction.Down, blockId);
+                    CheckFace(x, y, z, Direction.North, blockId);
+                    CheckFace(x, y, z, Direction.South, blockId);
+                    CheckFace(x, y, z, Direction.East, blockId);
+                    CheckFace(x, y, z, Direction.West, blockId);
                 }
             }
         }
     }
 
-    void CheckFace(int x, int y, int z, Direction dir) {
+    void CheckFace(int x, int y, int z, Direction dir, int blockId) {
         if (!IsBlockOccluded(x, y, z, dir)) {
-            AddFace(x, y, z, dir, section[y][z][x]);
+            AddFace(x, y, z, dir, blockId);
         }
     }
 
@@ -144,7 +146,8 @@ public class ChunkRenderer : MonoBehaviour {
     }
 
     Vector2 GetTextureCoordinates(int blockId, Direction dir) {
-        return new Vector2(0, 0);
+        // Implémentez la logique d'atlas de textures ici
+        return new Vector2(0, 0); // Exemple basique
     }
 
     void FinalizeMesh() {

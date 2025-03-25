@@ -55,7 +55,7 @@ public class World : MonoBehaviour {
 			ClientPlayChunkDataPacket packet = (ClientPlayChunkDataPacket)p;
 
 			loadChunkColumnQueue.Add(packet);
-		}, true); // Dev only
+		}, true);
 
 		client.manager.AddListener(ClientPlayUpdateTimePacket.ID, ClientPlayUpdateTimePacket.STATE, (ClientPacket p) => {
 			ClientPlayUpdateTimePacket packet = (ClientPlayUpdateTimePacket)p;
@@ -73,11 +73,51 @@ public class World : MonoBehaviour {
 	}
 
 	public void LoadChunkColumn(int chunkX, int chunkZ, List<List<List<List<int>>>> column) {
-		GameObject chunkObj = new GameObject($"Chunk_{chunkX}_{chunkZ}");
-		ChunkRenderer renderer = chunkObj.AddComponent<ChunkRenderer>();
-		renderer.meshFilter = chunkObj.AddComponent<MeshFilter>();
-		renderer.meshCollider = chunkObj.AddComponent<MeshCollider>();
-		renderer.BuildChunkMesh(column, chunkX, chunkZ);
+		Material atlasMaterial = Prefabs.GetMaterial("BlockAtlas");
+		GameObject chunk = new GameObject($"Chunk_{chunkX}_{chunkZ}");
+		
+		MeshFilter meshFilter = chunk.AddComponent<MeshFilter>();
+		MeshRenderer meshRenderer = chunk.AddComponent<MeshRenderer>();
+		meshRenderer.material = atlasMaterial;
+
+		List<CombineInstance> combines = new List<CombineInstance>();
+
+		foreach (var section in column) {
+			for (int y = 0; y < section.Count; y++) {
+				for (int z = 0; z < section[y].Count; z++) {
+					for (int x = 0; x < section[y][z].Count; x++) {
+						int blockId = section[y][z][x];
+						if (Registries.blocks.TryGetValue(blockId, out string blockName)) {
+							AddBlockToCombine(blockName, x, y, z, ref combines);
+						}
+					}
+				}
+			}
+		}
+
+		Mesh mesh = new Mesh();
+		mesh.CombineMeshes(combines.ToArray());
+		meshFilter.mesh = mesh;
+		chunk.AddComponent<MeshCollider>();
+	}
+
+	void AddBlockToCombine(string blockName, int x, int y, int z, ref List<CombineInstance> combines) {
+		GameObject prefab = Prefabs.GetPrefab($"Blocks/{blockName}");
+		if (!prefab) return;
+
+		MeshFilter prefabFilter = prefab.GetComponent<MeshFilter>();
+		if (!prefabFilter) return;
+
+		CombineInstance combine = new CombineInstance {
+			mesh = prefabFilter.sharedMesh,
+			transform = Matrix4x4.TRS(
+				new Vector3(x, y, z), 
+				Quaternion.identity, 
+				Vector3.one
+			)
+		};
+		
+		combines.Add(combine);
 	}
 
 	public void FixedUpdate() {
