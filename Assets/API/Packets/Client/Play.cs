@@ -102,11 +102,7 @@ namespace API {
 				int type = ReadVarInt();
 				
 				try {
-					Vector3 pos = new Vector3(
-						chunkX * 16 + ((packedXZ >> 4) & 0x0F),
-						yPos,
-						chunkZ * 16 + (packedXZ & 0x0F)
-					);
+					Vector3 pos = new (chunkX * 16 + ((packedXZ >> 4) & 0x0F), yPos, chunkZ * 16 + (packedXZ & 0x0F));
 					NbtCompound data = ReadNBT();
 					blockEntities.Add(Tuple.Create(pos, type, data));
 				} catch (Exception e) {
